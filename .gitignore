@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build-Artefakte (PyInstaller)
+build/
+dist/
+*.spec
+
+# Lokale Exporte
+*.3mf
+maptonics_raster_*.zip

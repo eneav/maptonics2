@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maptonics — Karten zum Anfassen</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#171411; --panel:#201c18; --panel2:#27221d; --line:#37312a;
+    --text:#f1eadf; --muted:#9a9183;
+    --rose:#f07d92; --rose-dim:#5a3038; --mint:#7fd6a4; --water:#6aa9e0;
+    --road:#2b2b2b; --bld:#b9b3aa;
+    font-size:15px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line)}
+  .logo{display:flex;align-items:center;gap:11px}
+  .wordmark{font-family:'Fraunces',Georgia,serif;font-weight:650;font-size:1.35rem}
+  .wordmark .o{color:var(--rose)}
+  .tagline{color:var(--muted);font-size:.8rem;border-left:1px solid var(--line);padding-left:14px}
+  header .spacer{flex:1}
+  .coords{font-size:.72rem;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+  .app{flex:1;display:grid;grid-template-columns:330px 1fr;min-height:0}
+  aside{background:var(--panel);border-right:1px solid var(--line);padding:18px;overflow-y:auto;max-height:calc(100vh - 61px)}
+  main{display:flex;flex-direction:column;min-width:0}
+  .group{margin-bottom:20px}
+  .group h2{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:600}
+  label{display:block;font-size:.82rem;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=number]{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 11px;border-radius:8px;font-size:.9rem;font-family:inherit}
+  input:focus{outline:2px solid var(--rose);outline-offset:1px}
+  input[type=range]{width:100%;accent-color:var(--rose)}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  button{font-family:inherit;font-size:.88rem;font-weight:600;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:9px 12px;transition:filter .12s}
+  button:hover{filter:brightness(1.15)}
+  button:focus-visible{outline:2px solid var(--rose);outline-offset:2px}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--rose);border-color:var(--rose);color:#241317}
+  button.active{background:var(--rose-dim);border-color:var(--rose)}
+  .btn-block{width:100%;margin-top:8px}
+  .layer{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;background:var(--panel2)}
+  .swatch{width:14px;height:14px;border-radius:4px;flex-shrink:0}
+  .layer span{flex:1;font-size:.86rem}
+  .toggle{position:relative;width:36px;height:20px;flex-shrink:0}
+  .toggle input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;margin:0}
+  .toggle .track{position:absolute;inset:0;border-radius:20px;background:#3a342d;transition:background .15s}
+  .toggle .track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#80776a;transition:transform .15s,background .15s}
+  .toggle input:checked + .track{background:var(--rose-dim)}
+  .toggle input:checked + .track::after{transform:translateX(16px);background:var(--rose)}
+  .hint{font-size:.74rem;color:var(--muted);line-height:1.45;margin-top:6px}
+  .zoom-badge{margin-top:10px;padding:9px 11px;border:1px solid var(--rose-dim);background:rgba(240,125,146,.08);border-radius:8px;font-size:.84rem;color:var(--text)}
+  .zoom-badge b{color:var(--rose);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{font-size:.74rem;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer;transition:border-color .12s,color .12s}
+  .chip:hover{border-color:var(--rose);color:var(--text)}
+  .chip.active{border-color:var(--rose);color:var(--rose)}
+  #zoomReadout{color:var(--rose)}
+  #status{font-size:.8rem;line-height:1.5;margin-top:10px;padding:10px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);min-height:42px;color:var(--muted);white-space:pre-line}
+  #status.ok{color:var(--mint)} #status.err{color:var(--rose)}
+  .tabs{display:flex;align-items:center;gap:4px;padding:10px 16px;border-bottom:1px solid var(--line)}
+  .tab{background:none;border:none;color:var(--muted);font-weight:600;font-size:.9rem;padding:8px 12px;border-radius:8px}
+  .tab.active{color:var(--rose);background:var(--panel2)}
+  .views{flex:1;position:relative;min-height:380px}
+  #map,#three-wrap{position:absolute;inset:0}
+  #three-wrap{display:none;background:#dfe6ea}
+  #three-wrap canvas{display:block}
+  #map.draw-mode{cursor:crosshair}
+  .leaflet-container{background:#11151a;font:inherit}
+  footer{padding:9px 22px;border-top:1px solid var(--line);font-size:.74rem;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap}
+  footer b{color:var(--text);font-weight:600}
+  .heart-pin{font-size:22px;line-height:22px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr}
+    aside{max-height:none;border-right:none;border-bottom:1px solid var(--line)}
+    .views{min-height:420px}.tagline{display:none}
+  }
+  @media (prefers-reduced-motion: reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+      <rect x="3" y="19" width="24" height="5" rx="1.5" fill="#5a5248"/>
+      <rect x="6" y="13" width="18" height="5" rx="1.5" fill="#8a8174"/>
+      <rect x="9" y="7"  width="12" height="5" rx="1.5" fill="#f07d92"/>
+    </svg>
+    <div class="wordmark">Mapt<span class="o">o</span>nics</div>
+  </div>
+  <div class="tagline">Euer Spot. Als Karte zum Anfassen.</div>
+  <div class="spacer"></div>
+  <div class="coords" id="zoomReadout" title="Aktueller Maßstab — bleibt gespeichert">ZOOM —</div>
+  <div class="coords" id="coordReadout">51.4344° N · 6.7623° E</div>
+</header>
+
+<div class="app">
+  <aside>
+    <div class="group">
+      <h2>Ort suchen</h2>
+      <div class="row">
+        <input type="text" id="searchInput" placeholder="Adresse oder Ort…" aria-label="Adresse suchen">
+        <button id="searchBtn" style="flex:0 0 auto">Suchen</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Bereich wählen</h2>
+      <div class="row">
+        <button id="drawBtn">▢ Rechteck zeichnen</button>
+        <button id="clearBtn">Löschen</button>
+      </div>
+      <button id="centerBtn" class="btn-block">⊙ Mittelpunkt klicken</button>
+      <div class="hint" id="areaInfo">Klick auf „Mittelpunkt klicken“ und dann auf einen Punkt – der aktuelle Zoom (m/Kachel) bestimmt die Größe. Oder zieh manuell ein Rechteck.</div>
+    </div>
+
+    <div class="group">
+      <h2>Maßstab &amp; Kacheln</h2>
+      <label for="tileMM">Kachelgröße (mm) — Rahmen-Innenmaß</label>
+      <input type="number" id="tileMM" value="200" min="50" max="250" step="5">
+      <label for="mpt">Meter pro Kachel (Zoom)</label>
+      <input type="number" id="mpt" value="1000" min="100" max="8000" step="50">
+      <div id="zoomBadge" class="zoom-badge"></div>
+      <div id="zoomChips" class="chips"></div>
+      <button id="lockBtn" class="btn-block">⊞ Aktuelle Auswahl = 1 Kachel</button>
+      <div class="hint" id="gridInfo">Fester Maßstab: 1 Kachel ist immer 20×20 cm und zeigt immer dieselbe reale Fläche. Kleiner Bereich → 1 Kachel. Großer Bereich → Raster zum Zusammensetzen.</div>
+    </div>
+
+    <div class="group">
+      <h2>Modell</h2>
+      <label for="baseH">Grundplatte (mm)</label>
+      <input type="number" id="baseH" value="2" min="0.8" max="6" step="0.2">
+      <label for="heightF">Gebäudehöhen × <span id="heightFVal">1.0</span></label>
+      <input type="range" id="heightF" min="0.5" max="3" step="0.1" value="1">
+    </div>
+
+    <div class="group">
+      <h2>Ebenen (eigene Farbe je Ebene)</h2>
+      <div class="layer"><span class="swatch" style="background:var(--bld)"></span><span>Gebäude</span>
+        <span class="toggle"><input type="checkbox" id="lyrBuildings" checked><span class="track"></span></span></div>
+      <div class="layer"><span class="swatch" style="background:var(--road)"></span><span>Straßen</span>
+        <span class="toggle"><input type="checkbox" id="lyrRoads" checked><span class="track"></span></span></div>
+      <div class="layer"><span class="swatch" style="background:var(--water)"></span><span>Wasser</span>
+        <span class="toggle"><input type="checkbox" id="lyrWater" checked><span class="track"></span></span></div>
+      <div class="layer"><span class="swatch" style="background:var(--mint)"></span><span>Grünflächen</span>
+        <span class="toggle"><input type="checkbox" id="lyrGreen" checked><span class="track"></span></span></div>
+      <div class="layer"><span class="swatch" style="background:var(--rose)"></span><span>Herz-Marker</span>
+        <span class="toggle"><input type="checkbox" id="lyrHeart" checked><span class="track"></span></span></div>
+      <button id="heartBtn" class="btn-block">♥ Herz-Position auf Karte setzen</button>
+      <div class="hint">Der Herz-Marker ist euer Spot — erstes Date, Antrag, erste Wohnung. Eigenes Objekt = frei einfärbbar.</div>
+    </div>
+
+    <div class="group">
+      <button id="generateBtn" class="primary btn-block">⬡ Mesh generieren</button>
+      <button id="exportBtn" class="btn-block" disabled>⤓ 3MF exportieren</button>
+      <div id="status">Bereit. Such einen Ort, zieh ein Rechteck, generier das Mesh.</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="tabs">
+      <button class="tab active" id="tabMap">Karte</button>
+      <button class="tab" id="tab3d">3D-Vorschau</button>
+      <div class="spacer"></div>
+    </div>
+    <div class="views">
+      <div id="map"></div>
+      <div id="three-wrap"></div>
+    </div>
+    <footer>
+      <span><b>Maptonics</b> · ein solutonics-Projekt</span>
+      <span>Kartendaten © OpenStreetMap-Mitwirkende (ODbL)</span>
+      <span>3MF: getrennte Objekte je Ebene → Multicolor in Bambu Studio</span>
+    </footer>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const statusEl = $("status");
+function setStatus(msg, cls){ statusEl.textContent = msg; statusEl.className = cls || ""; }
+
+// ---------- Karte ----------
+const map = L.map("map").setView([51.4344, 6.7623], 14);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
+}).addTo(map);
+map.on("mousemove", e => {
+  $("coordReadout").textContent =
+    Math.abs(e.latlng.lat).toFixed(4) + "° " + (e.latlng.lat >= 0 ? "N" : "S") + " · " +
+    Math.abs(e.latlng.lng).toFixed(4) + "° " + (e.latlng.lng >= 0 ? "E" : "W");
+});
+
+// ---------- Suche ----------
+async function searchAddress(){
+  const q = $("searchInput").value.trim();
+  if(!q) return;
+  setStatus("Suche „" + q + "“ …");
+  try{
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=de&q=" + encodeURIComponent(q));
+    const js = await r.json();
+    if(!js.length){ setStatus("Nichts gefunden. Probier eine genauere Adresse.", "err"); return; }
+    map.setView([+js[0].lat, +js[0].lon], 15);
+    setStatus("Gefunden: " + js[0].display_name, "ok");
+  }catch(e){ setStatus("Suche fehlgeschlagen: " + e.message, "err"); }
+}
+$("searchBtn").addEventListener("click", searchAddress);
+$("searchInput").addEventListener("keydown", e => { if(e.key === "Enter") searchAddress(); });
+
+// ---------- Rechteck ----------
+let drawMode = false, drawStart = null, rectLayer = null;
+function setDrawMode(on){
+  drawMode = on;
+  $("drawBtn").classList.toggle("active", on);
+  $("map").classList.toggle("draw-mode", on);
+  if(on){ map.dragging.disable(); setStatus("Zieh jetzt mit gedrückter Maustaste ein Rechteck auf."); }
+  else map.dragging.enable();
+}
+$("drawBtn").addEventListener("click", () => setDrawMode(!drawMode));
+$("clearBtn").addEventListener("click", () => {
+  if(rectLayer){ map.removeLayer(rectLayer); rectLayer = null; }
+  $("areaInfo").textContent = "Bereich gelöscht.";
+  $("exportBtn").disabled = true;
+});
+map.on("mousedown", e => {
+  if(!drawMode) return;
+  drawStart = e.latlng;
+  if(rectLayer) map.removeLayer(rectLayer);
+  rectLayer = L.rectangle(L.latLngBounds(drawStart, drawStart),
+    { color: "#f07d92", weight: 2, fillOpacity: 0.08 }).addTo(map);
+});
+map.on("mousemove", e => {
+  if(drawMode && drawStart && rectLayer) rectLayer.setBounds(L.latLngBounds(drawStart, e.latlng));
+});
+map.on("mouseup", () => {
+  if(!drawMode || !drawStart) return;
+  drawStart = null; setDrawMode(false);
+  const b = rectLayer.getBounds();
+  const lat0 = (b.getSouth()+b.getNorth())/2;
+  const w = (b.getEast()-b.getWest()) * 111320 * Math.cos(lat0*Math.PI/180) / 1000;
+  const h = (b.getNorth()-b.getSouth()) * 110540 / 1000;
+  $("areaInfo").textContent = "Bereich: " + w.toFixed(2) + " × " + h.toFixed(2) + " km";
+  updateGridInfo();
+});
+
+// ---------- Mittelpunkt-Modus ----------
+let centerMode = false;
+function setCenterMode(on) {
+  centerMode = on;
+  $("centerBtn").classList.toggle("active", on);
+  $("map").classList.toggle("draw-mode", on);
+  if (on) {
+    map.dragging.disable();
+    setStatus("Klick auf die Karte — dieser Punkt wird die Mitte der Kachel.");
+  } else {
+    map.dragging.enable();
+  }
+}
+$("centerBtn").addEventListener("click", () => setCenterMode(!centerMode));
+
+// ---------- Herz ----------
+let heartMode = false, heartLatLng = null, heartMarker = null;
+$("heartBtn").addEventListener("click", () => {
+  heartMode = !heartMode;
+  $("heartBtn").classList.toggle("active", heartMode);
+  if(heartMode) setStatus("Klick auf die Karte, um euren Spot zu markieren.");
+});
+map.on("click", e => {
+  if (centerMode) {
+    const lat = e.latlng.lat, lng = e.latlng.lng;
+    const mpt = +$("mpt").value || 1000;
+    const mLon = 111320 * Math.cos(lat * Math.PI / 180);
+    const mLat = 110540;
+    const halfW = (mpt / 2) / mLon;
+    const halfH = (mpt / 2) / mLat;
+    if (rectLayer) map.removeLayer(rectLayer);
+    rectLayer = L.rectangle(
+      [[lat - halfH, lng - halfW], [lat + halfH, lng + halfW]],
+      { color: "#f07d92", weight: 2, fillOpacity: 0.08 }
+    ).addTo(map);
+    setCenterMode(false);
+    $("areaInfo").textContent = "Bereich: " + (mpt / 1000).toFixed(2) + " × " + (mpt / 1000).toFixed(2) + " km (1 Kachel, zentriert)";
+    updateGridInfo();
+    setStatus('Mittelpunkt gesetzt ✓ Jetzt Mesh generieren klicken.', "ok");
+    return;
+  }
+  if(!heartMode) return;
+  heartLatLng = e.latlng; heartMode = false;
+  $("heartBtn").classList.remove("active");
+  if(heartMarker) map.removeLayer(heartMarker);
+  heartMarker = L.marker(heartLatLng, {
+    icon: L.divIcon({ className: "", html: '<div class="heart-pin">❤️</div>', iconSize: [22,22], iconAnchor: [11,11] })
+  }).addTo(map);
+  setStatus("Herz gesetzt. Liegt es im Rechteck, wird es mitgedruckt.", "ok");
+});
+
+$("heightF").addEventListener("input", () => $("heightFVal").textContent = (+$("heightF").value).toFixed(1));
+
+// ---------- Zoom merken (localStorage, lokal ausgeführt) ----------
+try{
+  const saved = localStorage.getItem("maptonics_mpt");
+  if(saved) $("mpt").value = saved;
+  const savedTile = localStorage.getItem("maptonics_tile");
+  if(savedTile) $("tileMM").value = savedTile;
+}catch(e){}
+function persist(){
+  try{
+    localStorage.setItem("maptonics_mpt", $("mpt").value);
+    localStorage.setItem("maptonics_tile", $("tileMM").value);
+  }catch(e){}
+}
+$("mpt").addEventListener("change", () => { persist(); updateZoom(); });
+$("tileMM").addEventListener("change", () => { persist(); updateZoom(); });
+
+// ---------- Zoom-Anzeige + Maßstab + Verlauf ----------
+function scaleRatio(){
+  const mpt = +$("mpt").value || 1000, tile = +$("tileMM").value || 200;
+  return Math.round(mpt * 1000 / tile);   // 1 mm Modell : X mm real
+}
+function updateZoom(){
+  const mpt = +$("mpt").value || 1000;
+  const ratio = scaleRatio().toLocaleString("de-DE");
+  $("zoomBadge").innerHTML = `Aktueller Zoom: <b>${mpt} m / Kachel</b><br>Maßstab <b>1 : ${ratio}</b> · gespeichert ✓`;
+  $("zoomReadout").textContent = `ZOOM ${mpt} m · 1:${ratio}`;
+  renderChips();
+}
+function getHist(){ try{ return JSON.parse(localStorage.getItem("maptonics_zoom_hist") || "[]"); }catch(e){ return []; } }
+function pushHist(v){
+  v = Math.round(v);
+  let h = getHist().filter(x => x !== v);
+  h.unshift(v); h = h.slice(0, 5);
+  try{ localStorage.setItem("maptonics_zoom_hist", JSON.stringify(h)); }catch(e){}
+  renderChips();
+}
+function renderChips(){
+  const h = getHist(), cur = +$("mpt").value;
+  if(!h.length){ $("zoomChips").innerHTML = ""; return; }
+  $("zoomChips").innerHTML = '<span style="font-size:.72rem;color:var(--muted);width:100%">Zuletzt benutzt:</span>'
+    + h.map(v => `<span class="chip${v === cur ? " active" : ""}" data-v="${v}">${v} m</span>`).join("");
+  $("zoomChips").querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    $("mpt").value = c.dataset.v; persist(); updateZoom(); if(rectLayer) updateGridInfo();
+  });
+}
+updateZoom();
+
+// Breitere Kante der aktuellen Auswahl als 1 Kachel festlegen
+function rectSpanMeters(){
+  const b = rectLayer.getBounds();
+  const lat0 = (b.getSouth()+b.getNorth())/2;
+  const w = (b.getEast()-b.getWest()) * 111320 * Math.cos(lat0*Math.PI/180);
+  const h = (b.getNorth()-b.getSouth()) * 110540;
+  return { w, h };
+}
+$("lockBtn").addEventListener("click", () => {
+  if(!rectLayer){ setStatus("Erst einen Bereich aufziehen, dann als Kachel festlegen.", "err"); return; }
+  const s = rectSpanMeters();
+  const m = Math.round(Math.max(s.w, s.h) / 50) * 50;
+  $("mpt").value = Math.max(100, m);
+  persist(); updateZoom(); pushHist(+$("mpt").value);
+  setStatus("Maßstab gespeichert: 1 Kachel = " + $("mpt").value + " m (≙ " + $("tileMM").value + " mm). Diese Auswahl ergibt 1 Kachel.", "ok");
+});
+
+// Live-Anzeige Raster beim Zeichnen
+function updateGridInfo(){
+  if(!rectLayer) return;
+  const s = rectSpanMeters();
+  const mpt = +$("mpt").value || 1000;
+  const tile = +$("tileMM").value || 200;
+  const cols = Math.max(1, Math.ceil(s.w / mpt - 1e-6));
+  const rows = Math.max(1, Math.ceil(s.h / mpt - 1e-6));
+  $("gridInfo").textContent =
+    `Raster: ${cols} × ${rows} Kacheln = ${cols*rows} Stück · Gesamtbild ${(cols*tile/10).toFixed(0)} × ${(rows*tile/10).toFixed(0)} cm`;
+}
+
+// ---------- Generieren (Python-Backend) ----------
+let project = null, gridOverlay = null;
+async function generate(){
+  if(!rectLayer){ setStatus("Erst einen Bereich aufziehen.", "err"); return; }
+  const b = rectLayer.getBounds();
+  $("generateBtn").disabled = true;
+  // Overpass legt Anfragen in eine Warteschlange — das kann dauern, also
+  // mitlaufende Sekundenanzeige, damit es nicht wie ein Haenger aussieht.
+  const t0 = Date.now();
+  const tick = setInterval(() => setStatus(
+    "Lade OSM-Daten und baue Kacheln … " + Math.round((Date.now()-t0)/1000) + " s"
+    + "\n(Overpass-Server haben manchmal Warteschlange — bis zu 2 Min möglich)"), 1000);
+  setStatus("Lade OSM-Daten und baue Kacheln … 0 s");
+  try{
+    const r = await fetch("/api/generate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bounds: { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() },
+        params: {
+          tile_mm: +$("tileMM").value || 200,
+          meters_per_tile: +$("mpt").value || 1000,
+          base_mm: +$("baseH").value || 2,
+          height_factor: +$("heightF").value || 1,
+          layers: {
+            buildings: $("lyrBuildings").checked, roads: $("lyrRoads").checked,
+            water: $("lyrWater").checked, green: $("lyrGreen").checked,
+            heart: $("lyrHeart").checked
+          },
+          heart: heartLatLng ? { lat: heartLatLng.lat, lon: heartLatLng.lng } : null
+        }
+      })
+    });
+    const js = await r.json();
+    clearInterval(tick);
+    if(!r.ok) throw new Error(js.error || ("HTTP " + r.status));
+    project = js;
+    pushHist(+$("mpt").value);
+    drawGridOverlay(js);
+    show3D(js);
+    switchTab(true);
+    $("exportBtn").disabled = false;
+    const s = js.stats, n = js.cols * js.rows;
+    const tileCm = js.tile_mm / 10;
+    setStatus(`Fertig ✓
+${js.cols} × ${js.rows} Kachel${n>1?"n":""} · Gesamtbild ${(js.cols*tileCm).toFixed(0)} × ${(js.rows*tileCm).toFixed(0)} cm
+Gebäude: ${s.buildings} · Straßen: ${s.roads} · Wasser: ${s.water} · Grün: ${s.green}${s.heart ? " · Herz ♥" : ""}
+${n>1 ? "Export liefert eine ZIP mit "+n+" 3MF-Dateien." : "Export liefert eine 3MF-Datei."}`, "ok");
+  }catch(e){
+    clearInterval(tick);
+    setStatus("Fehler: " + e.message, "err");
+  }
+  clearInterval(tick);
+  $("generateBtn").disabled = false;
+}
+$("generateBtn").addEventListener("click", generate);
+
+// Gesnapptes Raster auf der Karte einzeichnen
+function drawGridOverlay(js){
+  if(gridOverlay) map.removeLayer(gridOverlay);
+  const e = js.exp_bounds;
+  const lines = [];
+  lines.push(L.rectangle([[e.south, e.west],[e.north, e.east]],
+    { color: "#f07d92", weight: 2, fill: false }));
+  for(let c = 1; c < js.cols; c++){
+    const lon = e.west + (e.east - e.west) * c / js.cols;
+    lines.push(L.polyline([[e.south, lon],[e.north, lon]], { color: "#f07d92", weight: 1, opacity: .7, dashArray: "4" }));
+  }
+  for(let rr = 1; rr < js.rows; rr++){
+    const lat = e.south + (e.north - e.south) * rr / js.rows;
+    lines.push(L.polyline([[lat, e.west],[lat, e.east]], { color: "#f07d92", weight: 1, opacity: .7, dashArray: "4" }));
+  }
+  gridOverlay = L.layerGroup(lines).addTo(map);
+}
+
+$("exportBtn").addEventListener("click", () => {
+  window.location.href = "/api/export";
+  const multi = project && project.cols * project.rows > 1;
+  setStatus(multi
+    ? "ZIP exportiert ✓\nEnthält eine 3MF je Kachel + ZUSAMMENBAU.txt. Jede Kachel einzeln drucken, dann zusammensetzen."
+    : "3MF exportiert ✓\nIn Bambu Studio öffnen → je Objekt: Rechtsklick → Filament ändern.", "ok");
+});
+
+// ---------- Three.js ----------
+let renderer = null, scene = null, camera = null;
+const orbit = { theta: -0.9, phi: 1.0, radius: 260, target: new THREE.Vector3() };
+
+function show3D(proj){
+  const wrap = $("three-wrap");
+  if(!renderer){
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    wrap.appendChild(renderer.domElement);
+    camera = new THREE.PerspectiveCamera(45, 1, 0.5, 8000);
+    initOrbit(renderer.domElement);
+    window.addEventListener("resize", resize3D);
+    animate();
+  }
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xdfe6ea);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a857c, 0.95));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.65);
+  dir.position.set(120, 220, 140);
+  scene.add(dir);
+
+  const tile = proj.tile_mm, gap = 2;
+  const totalW = proj.cols * tile + (proj.cols - 1) * gap;
+  const totalH = proj.rows * tile + (proj.rows - 1) * gap;
+  const group = new THREE.Group();
+
+  for(const t of proj.tiles){
+    const ox = t.c * (tile + gap);
+    const oy = t.r * (tile + gap);
+    for(const lyr of t.layers){
+      const g = new THREE.BufferGeometry();
+      const pos = new Float32Array(lyr.verts.length);
+      for(let i = 0; i < lyr.verts.length; i += 3){
+        pos[i]   = lyr.verts[i] + ox;
+        pos[i+1] = lyr.verts[i+2];
+        pos[i+2] = -(lyr.verts[i+1] + oy);
+      }
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setIndex(lyr.tris);
+      g.computeVertexNormals();
+      group.add(new THREE.Mesh(g,
+        new THREE.MeshPhongMaterial({ color: lyr.color, flatShading: true, shininess: 8 })));
+    }
+  }
+  // Raster zentrieren
+  group.position.set(-totalW/2, 0, totalH/2);
+  scene.add(group);
+  orbit.target.set(0, 0, 0);
+  orbit.radius = Math.max(totalW, totalH) * 1.5;
+  resize3D();
+}
+function initOrbit(el){
+  let drag = false, lx = 0, ly = 0;
+  el.addEventListener("pointerdown", e => { drag = true; lx = e.clientX; ly = e.clientY; el.setPointerCapture(e.pointerId); });
+  el.addEventListener("pointermove", e => {
+    if(!drag) return;
+    orbit.theta -= (e.clientX - lx) * 0.006;
+    orbit.phi = Math.min(1.5, Math.max(0.12, orbit.phi - (e.clientY - ly) * 0.006));
+    lx = e.clientX; ly = e.clientY;
+  });
+  el.addEventListener("pointerup", () => drag = false);
+  el.addEventListener("wheel", e => {
+    e.preventDefault();
+    orbit.radius = Math.min(2500, Math.max(40, orbit.radius * (1 + Math.sign(e.deltaY) * 0.1)));
+  }, { passive: false });
+}
+function resize3D(){
+  const wrap = $("three-wrap");
+  if(!renderer || wrap.clientWidth === 0) return;
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  camera.aspect = wrap.clientWidth / wrap.clientHeight;
+  camera.updateProjectionMatrix();
+}
+function animate(){
+  requestAnimationFrame(animate);
+  if(!scene) return;
+  camera.position.set(
+    orbit.target.x + orbit.radius * Math.sin(orbit.phi) * Math.sin(orbit.theta),
+    orbit.target.y + orbit.radius * Math.cos(orbit.phi),
+    orbit.target.z + orbit.radius * Math.sin(orbit.phi) * Math.cos(orbit.theta)
+  );
+  camera.lookAt(orbit.target);
+  renderer.render(scene, camera);
+}
+
+// ---------- Tabs ----------
+function switchTab(to3d){
+  $("tabMap").classList.toggle("active", !to3d);
+  $("tab3d").classList.toggle("active", to3d);
+  $("map").style.display = to3d ? "none" : "";
+  $("three-wrap").style.display = to3d ? "block" : "none";
+  if(to3d) resize3D(); else map.invalidateSize();
+}
+$("tabMap").addEventListener("click", () => switchTab(false));
+$("tab3d").addEventListener("click", () => switchTab(true));
+
+window.addEventListener("load", () => { map.invalidateSize(); });
+</script>
+</body>
+</html>

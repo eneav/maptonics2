@@ -10,6 +10,7 @@ Bambu Studio pro Objekt ein Filament zuweisen kann.
 
 import io
 import math
+import time
 import zipfile
 
 import numpy as np
@@ -47,6 +48,9 @@ OVERPASS_ENDPOINTS = [
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
 ]
+
+# Gesamtzeit fuer alle Overpass-Versuche zusammen (Sekunden).
+OVERPASS_BUDGET_S = 250
 
 # Hoehen der duennen Ebenen ueber der Grundplatte (mm).
 # Leicht gestaffelt: Strassen liegen oben, damit sie Gruenflaechen kreuzen.
@@ -110,26 +114,54 @@ def fetch_osm(south: float, west: float, north: float, east: float) -> dict:
 );
 (._;>;);
 out body;"""
-    last_err = None
-    for url in OVERPASS_ENDPOINTS:
-        for verify in (True, False):
-            try:
-                if not verify:
-                    # Letzter Ausweg hinter TLS-inspizierenden Firmen-Proxys.
-                    import urllib3
-                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                r = requests.post(url, data={"data": query}, timeout=200,
-                                  headers={"User-Agent": "Maptonics/1.0"},
-                                  verify=verify)
-                r.raise_for_status()
-                return r.json()
-            except requests.exceptions.SSLError as e:
-                last_err = e
-                continue  # gleicher Endpoint, ohne Verifizierung
-            except Exception as e:  # noqa: BLE001 - Endpoint-Fallback
-                last_err = e
-                break  # naechster Endpoint
-    raise RuntimeError(f"Overpass nicht erreichbar: {last_err}")
+    # Gesamtbudget: lieber nach gut 4 Minuten mit klarer Meldung aufgeben,
+    # als das Frontend minutenlang haengen lassen.
+    deadline = time.monotonic() + OVERPASS_BUDGET_S
+    reasons: dict[str, str] = {}
+
+    # Zwei Runden: 502/504/Timeout sind bei Overpass meist nur Last und
+    # gehen beim zweiten Versuch durch.
+    for _ in range(2):
+        for url in OVERPASS_ENDPOINTS:
+            host = url.split("/")[2]
+            for verify in (True, False):
+                # Verbindungsaufbau muss schnell scheitern, damit ein toter
+                # Endpoint das Failover nicht blockiert. Lesen darf dauern,
+                # weil Overpass Anfragen in eine Warteschlange legt — aber
+                # nie laenger als das Restbudget.
+                read_budget = deadline - time.monotonic()
+                if read_budget < 10:
+                    reasons.setdefault(host, "nicht mehr versucht (Zeitbudget)")
+                    break
+                try:
+                    if not verify:
+                        # Letzter Ausweg hinter TLS-inspizierenden Firmen-Proxys.
+                        import urllib3
+                        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                    r = requests.post(url, data={"data": query},
+                                      timeout=(7, min(150, read_budget)),
+                                      headers={"User-Agent": "Maptonics/1.0"},
+                                      verify=verify)
+                    r.raise_for_status()
+                    return r.json()
+                except requests.exceptions.SSLError as e:
+                    reasons[host] = f"TLS: {type(e).__name__}"
+                    continue  # gleicher Endpoint, ohne Verifizierung
+                except requests.exceptions.HTTPError as e:
+                    reasons[host] = f"HTTP {e.response.status_code} (ueberlastet)"
+                    break  # naechster Endpoint
+                except requests.exceptions.Timeout:
+                    reasons[host] = "Zeitueberschreitung"
+                    break
+                except Exception as e:  # noqa: BLE001 - Endpoint-Fallback
+                    reasons[host] = type(e).__name__
+                    break
+
+    detail = ", ".join(f"{h}: {w}" for h, w in reasons.items())
+    raise RuntimeError(
+        "Alle Overpass-Server sind gerade belegt oder nicht erreichbar "
+        f"({detail}). Das liegt nicht an Maptonics — in ein paar Minuten "
+        "nochmal versuchen, oder einen kleineren Bereich waehlen.")
 
 
 # ----------------------------------------------------------------------
